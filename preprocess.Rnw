@@ -1,0 +1,75 @@
+\documentclass{article}
+\usepackage{hyperref}
+\usepackage{url}               % used in bibliography
+\usepackage[superscript,nomove]{cite} % use if \cite is used and superscripts wanted
+\begin{document}
+\author{Ben Temperton}
+\date{}
+\title{Exploring Pre-processing of data using phyloseq}
+\maketitle
+\section{Introduction}
+A recent paper was published on \href{http://arxiv.org/abs/1310.0424}{arXiv} that called into question the use of rarefying amplicon sequence data down to the smallest dataset prior to analysis\cite{2013arXiv1310.0424M}. The argument against doing it is two-fold:
+\subsection{Loss of Statistical Power and increase of Type II errors}
+Imagine you have 16S rRNA amplicon libraries from a summer and a winter surface water community at BATS. You sequence them both on the same multiplexed 454 run. For the summer community you get 100 sequences back, and for the winter community you get 1000 sequences back. Now, imagine that these two communities contain two OTUs, OTU1 and OTU2 at different ratios in the summer and winter:
+
+<<label=tab1, echo=FALSE,results='asis'>>=
+suppressMessages(library(xtable))
+summerWinter.orig<-matrix(c(62,500,50,38,500, 50), ncol=3, byrow=TRUE)
+colnames(summerWinter.orig)<-c('Summer', 'Winter', 'Rarefied Winter')
+rownames(summerWinter.orig)<-c('OTU1', 'OTU2')
+summerWinter.orig<-as.table(summerWinter.orig)
+print(xtable(summerWinter.orig, caption.placement="top", caption='Original Abundance and Rarefied abundance', digits=c(0,0,0,0)))
+@
+
+
+Now, if we use a Chi-squared test to see if summer and winter are statistically different, for the original data we get:
+
+<<label=tab2, echo=FALSE, results='asis'>>=
+orig.mtx<-matrix(c(62,500,38,500), ncol=2, byrow=TRUE)
+rarefied.mtx<-matrix(c(62,50,38,50), ncol=2, byrow=TRUE)
+orig.chi<-chisq.test(orig.mtx)
+rarefied.chi<-chisq.test(rarefied.mtx)
+chi.table<-matrix(c(orig.chi$p.value, rarefied.chi$p.value), ncol=1)
+colnames(chi.table)<-c('P-value')
+rownames(chi.table)<-c('Original', 'Rarefied')
+print(xtable(chi.table, caption='Statistical test of Sample difference - Original vs. Rarefied', digits=c(3)))
+@
+
+
+So, by rarefying the data, the P-value has increased from \Sexpr{orig.chi$p.value} to \Sexpr{rarefied.chi$p.value}, and would thus not be considered statistically significant at a P-value cutoff of 0.05.
+
+\subsection{Overdispersion in rarefied datasets increases Type I errors}
+Count data, like that used in community analyses have interesting properties that are worth remembering:
+\begin{itemize}
+  \item They are bounded by 0 (no negative counts)
+  \item As the mean increases, the variance increases (a difference of 3 is big when the mean is 1, but not when the mean is 1000)
+  \item Errors are not normally distributed
+\end{itemize}
+
+
+It is fairly common for this type of data to be \emph{overdispersed}, meaning that the variance is larger than the mean. This can be due to missing model terms such as interactions, covariates etc. Remember that count data is typically modeled by a Poisson distribution, with a single parameter - the average density or arrival rate ($\lambda>0$). Both the mean and the variance of a Poisson distribution are equal to $\lambda = rt$, where $r$ is the density per sampling effort (how likely are you to find OTU1 if you have a single sequence), and $t$ is the sampling effort.
+
+
+This has two effects: Firstly, it not allow the variance to be adjusted independently of the mean (as both equal $rt$). Secondly, even when the population density is constant, you can change the poisson distribution of counts by sampling more extensively\cite{Bolker2007} - i.e. by collecting more 16S rRNA sequences for a given sample.
+
+Overdispersion can also be caused by an abundance of 0 counts in the data, clustering of observations or correlation between observations\cite{Zuur2009}. 
+
+\section{Solving the problem with phyloseq}
+<<packages>>=
+suppressMessages(library(phyloseq))
+data(GlobalPatterns)
+@
+Global Patterns is a phyloseq object that contains the following:
+\begin{itemize}
+  \item An OTU table (containing 19,216 taxa and 26 samples)
+  \item Sample data (26 samples with 7 sample variables)
+  \item A taxonomy table (19,216 taxa with 7 taxonomic ranks)
+  \item A phylogenetic tree (19,216 tips)
+\end{itemize}
+
+
+
+\bibliography{preprocess.bib}
+\bibliographystyle{unsrt}
+% Use \bibliographystyle{abbrv} if want references alphabetized
+\end{document}
